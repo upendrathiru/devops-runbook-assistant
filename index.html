@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevOps Runbook Assistant</title>
+<style>
+  :root{
+    --ink:#152233;
+    --ink-dim:#4d5c70;
+    --line:#dde3ea;
+    --paper:#f6f7f9;
+    --panel:#ffffff;
+    --accent:#0f5e4c;
+    --accent-dim:#e4efec;
+    --amber:#a8631a;
+    --amber-dim:#fbeee0;
+    --mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+    --sans:'IBM Plex Sans','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:var(--sans);
+    background:var(--paper);
+    color:var(--ink);
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* ---- Top bar: reads like a system status strip, not a marketing header ---- */
+  header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 22px;
+    background:var(--ink);
+    color:#eef2f6;
+    border-bottom:3px solid var(--accent);
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;}
+  .brand .mark{
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:.14em;
+    background:var(--accent);
+    color:#eafaf3;
+    padding:3px 7px;
+    border-radius:3px;
+  }
+  .brand h1{font-size:16px;font-weight:600;margin:0;letter-spacing:.01em;}
+  .status{font-family:var(--mono);font-size:11px;color:#9fb0c3;display:flex;gap:16px;}
+  .status span::before{content:"● ";color:#3fbf8a;}
+
+  /* ---- Layout ---- */
+  .layout{
+    flex:1;
+    display:grid;
+    grid-template-columns:250px 1fr;
+    min-height:0;
+  }
+  @media (max-width:820px){ .layout{grid-template-columns:1fr;} .sidebar{display:none;} }
+
+  .sidebar{
+    border-right:1px solid var(--line);
+    background:var(--panel);
+    padding:18px 16px;
+    overflow-y:auto;
+  }
+  .sidebar h2{
+    font-size:11px;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--ink-dim);margin:0 0 10px;font-weight:700;
+  }
+  .sidebar .hint{font-size:12.5px;color:var(--ink-dim);line-height:1.5;margin-bottom:20px;}
+  .qbtn{
+    display:block;width:100%;text-align:left;
+    background:var(--accent-dim);border:1px solid transparent;
+    color:var(--ink);font-size:12.5px;line-height:1.4;
+    padding:9px 10px;border-radius:6px;margin-bottom:8px;cursor:pointer;
+    font-family:var(--sans);
+  }
+  .qbtn:hover{border-color:var(--accent);}
+
+  .metrics{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);}
+  .metric-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--ink-dim);}
+  .metric-row b{color:var(--ink);font-family:var(--mono);}
+
+  /* ---- Chat column ---- */
+  .chat-col{display:flex;flex-direction:column;min-height:0;}
+  .messages{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:18px;}
+  .msg{max-width:720px;}
+  .msg.user{align-self:flex-end;}
+  .msg.assistant{align-self:flex-start;}
+
+  .bubble{
+    padding:14px 16px;border-radius:10px;font-size:14px;line-height:1.6;
+    white-space:pre-wrap;
+  }
+  .msg.user .bubble{background:var(--ink);color:#eef2f6;border-bottom-right-radius:2px;}
+  .msg.assistant .bubble{background:var(--panel);border:1px solid var(--line);border-bottom-left-radius:2px;}
+  .msg.assistant .bubble strong{color:var(--accent);}
+
+  .role-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--ink-dim);margin-bottom:5px;text-transform:uppercase;}
+  .msg.user .role-label{text-align:right;}
+
+  .sources{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;}
+  .source-chip{
+    font-family:var(--mono);font-size:11px;background:var(--amber-dim);color:var(--amber);
+    border:1px solid #eeddc7;padding:3px 8px;border-radius:12px;
+  }
+
+  .feedback-row{display:flex;align-items:center;gap:10px;margin-top:10px;}
+  .feedback-row button{
+    font-family:var(--mono);font-size:11px;border:1px solid var(--line);background:#fff;
+    border-radius:5px;padding:4px 9px;cursor:pointer;color:var(--ink-dim);
+  }
+  .feedback-row button.selected{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .feedback-row .latency{font-family:var(--mono);font-size:11px;color:#9aa7b7;margin-left:auto;}
+
+  .empty-state{margin:auto;text-align:center;color:var(--ink-dim);max-width:420px;}
+  .empty-state .mark{
+    display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+    background:var(--accent);color:#eafaf3;padding:4px 9px;border-radius:3px;margin-bottom:14px;
+  }
+  .empty-state p{font-size:13.5px;line-height:1.6;}
+
+  /* ---- Composer ---- */
+  .composer{
+    border-top:1px solid var(--line);background:var(--panel);
+    padding:14px 22px;display:flex;gap:10px;align-items:flex-end;
+  }
+  .composer textarea{
+    flex:1;resize:none;border:1px solid var(--line);border-radius:8px;
+    padding:11px 13px;font-family:var(--sans);font-size:14px;line-height:1.5;
+    max-height:140px;min-height:44px;
+  }
+  .composer textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .composer button{
+    background:var(--accent);color:#fff;border:none;border-radius:8px;
+    padding:0 18px;height:44px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:var(--sans);
+  }
+  .composer button:disabled{background:#a9b6c4;cursor:not-allowed;}
+  .composer .export{
+    background:transparent;color:var(--ink-dim);border:1px solid var(--line);font-weight:500;
+  }
+
+  .typing{display:flex;gap:4px;padding:4px 0;}
+  .typing span{width:6px;height:6px;border-radius:50%;background:var(--ink-dim);animation:blink 1.2s infinite ease-in-out;}
+  .typing span:nth-child(2){animation-delay:.2s;}
+  .typing span:nth-child(3){animation-delay:.4s;}
+  @keyframes blink{0%,80%,100%{opacity:.25;}40%{opacity:1;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="mark">RUNBOOK//AI</span>
+    <h1>DevOps Runbook Assistant</h1>
+  </div>
+  <div class="status">
+    <span id="statusText">connecting…</span>
+    <span id="providerText" style="color:#9fb0c3;">provider: —</span>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <h2>Try a question</h2>
+    <div class="hint">Answers are generated only from indexed internal runbooks — every response cites its source section.</div>
+    <button class="qbtn" data-q="How do I roll back a deployment on service X?">How do I roll back a deployment on service X?</button>
+    <button class="qbtn" data-q="Show me the steps for database migration with zero-downtime">Show me the steps for database migration with zero-downtime</button>
+    <button class="qbtn" data-q="What is the nightly build pipeline summary?">What is the nightly build pipeline summary?</button>
+    <button class="qbtn" data-q="What's the first thing I should do when a SEV1 incident is declared?">What's the first thing I should do when a SEV1 incident is declared?</button>
+
+    <div class="metrics" id="metrics">
+      <h2>Session metrics</h2>
+      <div class="metric-row"><span>Total queries</span><b id="mTotal">0</b></div>
+      <div class="metric-row"><span>Avg latency</span><b id="mLatency">0 ms</b></div>
+      <div class="metric-row"><span>Marked helpful</span><b id="mHelpful">0</b></div>
+      <div class="metric-row"><span>No answer found</span><b id="mNoAnswer">0</b></div>
+    </div>
+  </aside>
+
+  <div class="chat-col">
+    <div class="messages" id="messages">
+      <div class="empty-state" id="emptyState">
+        <div class="mark">RUNBOOK//AI</div>
+        <p>Ask an operational question — deployments, rollbacks, migrations, pipelines, incident response — and get an answer grounded in your team's actual runbooks, with sources cited.</p>
+      </div>
+    </div>
+
+    <div class="composer">
+      <textarea id="input" placeholder="Ask a DevOps question… (Shift+Enter for new line)" rows="1"></textarea>
+      <button class="export" id="exportBtn" title="Download audit log CSV">Export logs</button>
+      <button id="sendBtn">Ask</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin; // backend served at same origin by default (see backend/app.py)
+let sessionId = null;
+let userId = "demo-user";
+
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const statusText = document.getElementById('statusText');
+const providerText = document.getElementById('providerText');
+const emptyState = document.getElementById('emptyState');
+
+function autoGrow(){
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
+}
+inputEl.addEventListener('input', autoGrow);
+inputEl.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    send();
+  }
+});
+
+document.querySelectorAll('.qbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    inputEl.value = btn.dataset.q;
+    send();
+  });
+});
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  window.open(API_BASE + '/api/logs/export', '_blank');
+});
+
+async function init(){
+  try{
+    const health = await fetch(API_BASE + '/healthz').then(r=>r.json());
+    statusText.textContent = health.status === 'ok' ? 'connected' : 'degraded';
+  }catch(e){
+    statusText.textContent = 'backend unreachable';
+    return;
+  }
+  const sess = await fetch(API_BASE + '/api/session', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({user_id: userId})
+  }).then(r=>r.json());
+  sessionId = sess.session_id;
+  refreshMetrics();
+}
+
+function addMessage(role, html){
+  emptyState.style.display = 'none';
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + role;
+  const label = document.createElement('div');
+  label.className = 'role-label';
+  label.textContent = role === 'user' ? 'You' : 'Runbook Assistant';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = html;
+  wrap.appendChild(label);
+  wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return wrap;
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function formatAnswer(text){
+  // Minimal markdown: **bold** and line breaks. Kept intentionally simple —
+  // this is an internal tool, not a full markdown renderer.
+  let escaped = escapeHtml(text);
+  escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  escaped = escaped.replace(/_(.+?)_/g, '<em>$1</em>');
+  return escaped;
+}
+
+async function send(){
+  const question = inputEl.value.trim();
+  if(!question || !sessionId) return;
+  inputEl.value = '';
+  autoGrow();
+  sendBtn.disabled = true;
+
+  addMessage('user', escapeHtml(question));
+
+  const typingWrap = addMessage('assistant', '<div class="typing"><span></span><span></span><span></span></div>');
+
+  try{
+    const res = await fetch(API_BASE + '/api/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question, session_id: sessionId, user_id: userId})
+    });
+    const data = await res.json();
+
+    typingWrap.remove();
+
+    let sourcesHtml = '';
+    if(data.sources && data.sources.length){
+      sourcesHtml = '<div class="sources">' + data.sources.map(s =>
+        `<span class="source-chip">${escapeHtml(s.title)} → ${escapeHtml(s.section)}</span>`
+      ).join('') + '</div>';
+    }
+
+    const bubbleHtml = formatAnswer(data.answer) + sourcesHtml +
+      `<div class="feedback-row">
+         <button data-fb="up" data-qid="${data.query_id}">Helpful</button>
+         <button data-fb="down" data-qid="${data.query_id}">Not helpful</button>
+         <span class="latency">${data.latency_ms} ms</span>
+       </div>`;
+
+    const assistantWrap = addMessage('assistant', bubbleHtml);
+
+    assistantWrap.querySelectorAll('[data-fb]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const group = assistantWrap.querySelectorAll('[data-fb]');
+        group.forEach(b=>b.classList.remove('selected'));
+        btn.classList.add('selected');
+        await fetch(API_BASE + '/api/feedback', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({query_id: btn.dataset.qid, feedback: btn.dataset.fb})
+        });
+        refreshMetrics();
+      });
+    });
+
+    refreshMetrics();
+  }catch(err){
+    typingWrap.remove();
+    addMessage('assistant', 'Something went wrong reaching the backend. Check that the API server is running.');
+  }finally{
+    sendBtn.disabled = false;
+  }
+}
+
+sendBtn.addEventListener('click', send);
+
+async function refreshMetrics(){
+  try{
+    const m = await fetch(API_BASE + '/api/metrics').then(r=>r.json());
+    document.getElementById('mTotal').textContent = m.total_queries;
+    document.getElementById('mLatency').textContent = m.avg_latency_ms + ' ms';
+    document.getElementById('mHelpful').textContent = m.feedback_helpful;
+    document.getElementById('mNoAnswer').textContent = m.queries_with_no_answer;
+  }catch(e){ /* non-fatal */ }
+}
+
+init();
+</script>
+</body>
+</html>
